@@ -6,13 +6,13 @@ import java.util.Scanner;
 // The kiosk is at Antipolo station.
 //
 // DFA parts:
-//   States:          SELECT_DESTINATION, DUE_10 ... DUE_1, TICKET_ISSUED
-//                    (each DUE_x state means "x pesos still due")
-//   Alphabet:        destinations (Marikina, Santolan) and coins (P1, P5, P10)
-//   Start state:     SELECT_DESTINATION
-//   Accepting state: TICKET_ISSUED
-//   Transitions:     choosing a destination -> DUE_fare
-//                    inserting a coin in DUE_x -> DUE_(x - coin), or TICKET_ISSUED
+//   States:          Select Destination, Due P20 ... Due P1, Ticket Issued
+//                    (each "Due Px" state means "x pesos still due")
+//   Alphabet:        destinations (Marikina, Santolan, Anonas) and coins (P1, P5, P10, P20)
+//   Start state:     Select Destination
+//   Accepting state: Ticket Issued
+//   Transitions:     choosing a destination -> Due P(fare)
+//                    inserting a coin in Due Px -> Due P(x - coin), or Ticket Issued
 //                    when the coin covers the amount due (see nextDue)
 //
 // NOTE: Fares are fictional demonstration fares, not official LRT fares.
@@ -20,55 +20,79 @@ public class Main {
 
     static Scanner sc = new Scanner(System.in);
 
-    public static void main(String[] args) {
-        System.out.println("=== LRT TICKET KIOSK ===");
-        System.out.println("(Demonstration fares only - not official LRT fares)");
-        System.out.println("Kiosk at: Antipolo");
-        System.out.println();
-        System.out.println("1. Marikina (P5)");
-        System.out.println("2. Santolan (P10)");
-        System.out.println();
+    // Destinations and their fares (same position in both arrays).
+    static String[] stations = {"Marikina", "Santolan", "Anonas"};
+    static int[] fares = {5, 10, 20};
 
-        // Start state: SELECT_DESTINATION
-        String destination = "";
-        while (destination.isEmpty()) {
-            String choice = ask("Select destination: ");
-            if (choice.equals("1")) {
-                destination = "Marikina";
-            } else if (choice.equals("2")) {
-                destination = "Santolan";
-            } else {
-                System.out.println("Invalid choice. Enter 1 or 2.");
+    static final String LINE = "======================================";
+
+    public static void main(String[] args) {
+        System.out.println(LINE);
+        System.out.println("     LRT TICKET MACHINE SIMULATOR");
+        System.out.println("         You are at: Antipolo");
+        System.out.println(LINE);
+
+        // Each ticket purchase is one complete run of the DFA:
+        // it starts in Select Destination and ends in Ticket Issued.
+        // Buying another ticket starts a NEW run from the start state,
+        // just like testing another input string in a DFA simulator.
+        while (true) {
+            buyTicket();
+
+            String again = ask("\nBuy another ticket? (y/n): ");
+            if (!again.equalsIgnoreCase("y") && !again.equalsIgnoreCase("yes")) {
+                break;
             }
         }
+        System.out.println("\nThank you for riding the LRT!");
+    }
 
-        int fare = 10;
-        if (destination.equals("Marikina")) {
-            fare = 5;
+    // One complete run of the DFA: from the start state to the accepting state.
+    static void buyTicket() {
+        System.out.println();
+
+        // Start state: Select Destination
+        System.out.println("Where are you going?");
+        for (int i = 0; i < stations.length; i++) {
+            System.out.printf("  [%d] %-10s P%d%n", i + 1, stations[i], fares[i]);
         }
+        System.out.println();
 
-        // Transition: SELECT_DESTINATION --destination--> DUE_fare
-        System.out.println("[SELECT_DESTINATION] --" + destination + "--> " + state(fare));
+        int choice = readDestination();
+        String destination = stations[choice];
+        int fare = fares[choice];
 
-        int due = fare;   // current state is DUE_due
-        int paid = 0;     // total coins inserted (for the ticket summary only)
+        // Transition: Select Destination --destination--> Due P(fare)
+        System.out.println("  DFA: [Select Destination] --" + destination + "--> " + state(fare));
+        System.out.println();
+        System.out.println("Fare to " + destination + ": P" + fare);
+        System.out.println("Accepted coins: P1, P5, P10, P20");
+
+        int due = fare;   // current state is "Due P(due)"
+        int paid = 0;     // total coins inserted (for the ticket only)
         int change = 0;
 
         // Keep reading coins until the accepting state is reached (due = 0)
         while (due > 0) {
-            int coin = readCoin(ask("\nInsert coin (1, 5, or 10): "));
+            String input = ask("\nInsert coin: ");
+            int coin = readCoin(input);
             if (coin == 0) {
-                System.out.println("Invalid coin. Still " + state(due) + ".");
+                // Invalid coin: the DFA stays in the same state
+                System.out.println("  '" + input + "' is not accepted. Use P1, P5, P10 or P20.");
+                System.out.println("  DFA: stays in " + state(due));
                 continue;
             }
 
             int next = nextDue(due, coin);
-            System.out.println(state(due) + " --P" + coin + "--> " + state(next));
+            System.out.println("  DFA: " + state(due) + " --P" + coin + "--> " + state(next));
 
             // A DFA only accepts or rejects. Giving change is an action the
-            // kiosk performs once it reaches the accepting state TICKET_ISSUED.
+            // kiosk performs once it reaches the accepting state Ticket Issued.
             if (next == 0) {
                 change = coin - due;
+                System.out.println("  Inserted P" + coin + ". Fully paid!");
+            } else {
+                System.out.println("  Inserted P" + coin + ". Remaining: P" + next);
             }
             paid = paid + coin;
             due = next;
@@ -76,15 +100,19 @@ public class Main {
 
         // Accepting state reached: print the ticket
         System.out.println();
-        System.out.println("Ticket issued!");
-        System.out.println("Route:       Antipolo -> " + destination);
-        System.out.println("Fare:        P" + fare);
-        System.out.println("Amount paid: P" + paid);
-        System.out.println("Change:      P" + change);
+        System.out.println(LINE);
+        System.out.println("              LRT TICKET");
+        System.out.println("  From:    Antipolo");
+        System.out.println("  To:      " + destination);
+        System.out.println("  Fare:    P" + fare);
+        System.out.println("  Paid:    P" + paid);
+        System.out.println("  Change:  P" + change);
+        System.out.println(LINE);
+        System.out.println("Please take your ticket and change.");
     }
 
-    // Transition function for coins: from DUE_due, reading a coin.
-    // Returns the new amount due (0 means TICKET_ISSUED).
+    // Transition function for coins: from Due P(due), reading a coin.
+    // Returns the new amount due (0 means Ticket Issued).
     static int nextDue(int due, int coin) {
         if (coin >= due) {
             return 0;
@@ -92,21 +120,34 @@ public class Main {
         return due - coin;
     }
 
-    // State name for an amount due, e.g. [DUE_5] or [TICKET_ISSUED].
+    // Readable state name, e.g. [Due P5] or [Ticket Issued].
     static String state(int due) {
         if (due == 0) {
-            return "[TICKET_ISSUED]";
+            return "[Ticket Issued]";
         }
-        return "[DUE_" + due + "]";
+        return "[Due P" + due + "]";
+    }
+
+    // Keeps asking until the user picks a listed destination. Returns its index.
+    static int readDestination() {
+        while (true) {
+            String line = ask("Enter 1, 2 or 3: ");
+            for (int i = 0; i < stations.length; i++) {
+                if (line.equals(String.valueOf(i + 1))) {
+                    return i;
+                }
+            }
+            System.out.println("  Please enter 1, 2 or 3.");
+        }
     }
 
     // Turns "5", "P5" or "₱5" (peso sign) into 5.
-    // Returns 0 if the input is not a P1, P5 or P10 coin.
+    // Returns 0 if the input is not a P1, P5, P10 or P20 coin.
     static int readCoin(String text) {
         if (text.startsWith("P") || text.startsWith("p") || text.startsWith("₱")) {
             text = text.substring(1);
         }
-        if (text.equals("1") || text.equals("5") || text.equals("10")) {
+        if (text.equals("1") || text.equals("5") || text.equals("10") || text.equals("20")) {
             return Integer.parseInt(text);
         }
         return 0;
